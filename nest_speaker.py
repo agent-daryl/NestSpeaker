@@ -251,11 +251,19 @@ class NestPlayer:
     def play_tts(self, text, server_ip="10.10.0.100", server_port=8001):
         ts = int(time.time())
         fname = f"nest_tts_{ts}.mp3"
-        gTTS(text, lang="en").save(f"/tmp/{fname}")
-        size = os.path.getsize(f"/tmp/{fname}")
+        fpath = f"/tmp/{fname}"
+        gTTS(text, lang="en").save(fpath)
+        size = os.path.getsize(fpath)
         print(f"  [5] TTS audio: {fname} ({size}B)")
         url = f"http://{server_ip}:{server_port}/{fname}"
         self.play_media(url)
+        # Auto-cleanup MP3 after playback finishes or times out
+        try:
+            if os.path.exists(fpath):
+                os.remove(fpath)
+                print(f"      Cleaned up {fname}")
+        except OSError:
+            pass
 
     def _respond_to_heartbeats(self):
         """Background thread: respond to PING/HEARTBEAT so the Cast socket stays alive."""
