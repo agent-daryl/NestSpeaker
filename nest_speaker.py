@@ -29,6 +29,7 @@ RECEIVER_NS = "urn:x-cast:com.google.cast.receiver"
 MEDIA_NS = "urn:x-cast:com.google.cast.media"
 
 MEDIA_RECEIVER_APP_ID = "CC1AD845"
+NEST_IP = "10.10.100.122"
 
 _request_counters = {}
 
@@ -354,15 +355,14 @@ class NestPlayer:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Play TTS on Google Nest")
+    parser = argparse.ArgumentParser(description="Play TTS on Google Nest Mini")
     parser.add_argument("message", nargs="?", help="Text to speak")
-    parser.add_argument("--ip", default="10.10.100.122")
     parser.add_argument("--server-ip", default="10.10.0.100")
     parser.add_argument("--server-port", type=int, default=8001)
     args = parser.parse_args()
 
     start_http_server(port=args.server_port)
-    p = NestPlayer(ip=args.ip)
+    p = NestPlayer(ip=NEST_IP)
     try:
         p.connect()
         p.handshake()
