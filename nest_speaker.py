@@ -16,6 +16,14 @@ import time
 
 from google.protobuf.message import DecodeError
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+import logging
+
+class QuietHTTPHandler(SimpleHTTPRequestHandler):
+    def log_error(self, format, *args):
+        exc_name = getattr(args[0], '__class__', lambda: None).__name__
+        if exc_name in ('ConnectionResetError', 'BrokenPipeError'):
+            return
+        super().log_error(format, *args)
 from gtts import gTTS
 
 from pychromecast.cast_channel_pb2 import CastMessage
@@ -166,7 +174,7 @@ def wait_for_type(sock, target, max_attempts=15, timeout=2):
 # ---- HTTP server ----
 def start_http_server(directory="/tmp", port=8001):
     os.chdir(directory)
-    server = HTTPServer(("0.0.0.0", port), SimpleHTTPRequestHandler)
+    server = HTTPServer(("0.0.0.0", port), QuietHTTPHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     print(f"  HTTP server on :{port}")
     return server
