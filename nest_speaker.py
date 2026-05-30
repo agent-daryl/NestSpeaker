@@ -373,12 +373,23 @@ class NestPlayer:
 def main():
     parser = argparse.ArgumentParser(description="Play TTS on Google Nest Mini")
     parser.add_argument("message", nargs="?", help="Text to speak")
-    parser.add_argument("--server-ip", default="10.10.0.100")
+    parser.add_argument("--ip", default=NEST_IP, help="Nest/Chromecast IP address")
+    parser.add_argument("--server-ip", default="", help="Host IP for file serving (auto-detect if empty)")
     parser.add_argument("--server-port", type=int, default=8001)
     args = parser.parse_args()
 
+    if not args.server_ip:
+        try:
+            tmp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            tmp.connect((args.ip, 8009))
+            args.server_ip = tmp.getsockname()[0]
+        except:
+            args.server_ip = "127.0.0.1"
+        finally:
+            tmp.close()
+
     start_http_server(port=args.server_port)
-    p = NestPlayer(ip=NEST_IP)
+    p = NestPlayer(ip=args.ip)
     try:
         p.connect()
         p.handshake()
