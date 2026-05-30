@@ -218,34 +218,42 @@ class NestPlayer:
     def launch_media_receiver(self):
         print("  [3] Launching Media Receiver ...")
 
-        # Query current status first (might be already running)
-        send_msg(self.sock, SENDER_ID, RECEIVER_ID, RECEIVER_NS, {
-            "type": "GET_STATUS"
-        })
-
-        messages = wait_for_type(self.sock, "RECEIVER_STATUS", max_attempts=20, timeout=2)
-        for p in messages:
-            sid = self._get_session_from_status(p)
-            if sid:
-                self.session_id = sid
-                print(f"      Already running, session = {self.session_id}")
-                return True
-
-        # Not running — launch it
+        # Always LAUNCH unconditionally — idempotent on modern firmware.
+        # Gemini firmware delays the second RECEIVER_STATUS by 1.5-3 seconds
+        # after LAUNCH_STATUS and MULTIZONE_STATUS. We must keep reading
+        # until we get it.
         send_msg(self.sock, SENDER_ID, RECEIVER_ID, RECEIVER_NS, {
             "type": "LAUNCH",
             "appId": MEDIA_RECEIVER_APP_ID
         })
 
-        messages = wait_for_type(self.sock, "RECEIVER_STATUS", max_attempts=20, timeout=3)
-        for p in messages:
-            sid = self._get_session_from_status(p)
-            if sid:
-                self.session_id = sid
-                print(f"      Launched, session = {self.session_id}")
-                return True
-        print("      Launch failed — no session ID received.")
-        return False
+        deadline = time.time() + 8
+        session_id = None
+        transport_id = None
+
+        while time.time() < deadline:
+            parsed = receive(self.sock, timeout=min(2, max(0.5, deadline - time.time())))
+            if parsed is None:
+                continue
+            if parsed.get("type") == "RECEIVER_STATUS":
+                apps = parsed.get("status", {}).get("applications", [])
+                for app in apps:
+                    if app.get("appId") == MEDIA_RECEIVER_APP_ID:
+                        session_id = app.get("sessionId")
+                        transport_id = app.get("transportId")
+                        break
+                if session_id:
+                    break
+            # Ignore LAUNCH_STATUS and MULTIZONE_STATUS, keep reading
+
+        if not session_id:
+            print("      Launch failed — no sessionId from RECEIVER_STATUS.")
+            return False
+
+        self.session_id = session_id
+        self._transport_id = transport_id
+        print(f"      Launched, session = {self.session_id}, transport = {transport_id}")
+        return True
 
     def open_media_channel(self):
         if not self.session_id:
