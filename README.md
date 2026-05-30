@@ -44,8 +44,11 @@ New-NetFirewallRule -DisplayName "NestSpeaker HTTP" -Direction Inbound -LocalPor
 ### 4. Run it
 
 ```bash
-# --ip auto-detects your server IP if you're on the same network
+# Default (English)
 python3 nest_speaker.py --ip 10.10.1.50 "Your Nest is alive!"
+
+# Spanish
+python3 nest_speaker.py --ip 10.10.1.50 --lang es "¡Hola! Tu Nest está funcionando."
 
 # Different port
 python3 nest_speaker.py --ip 10.10.1.50 --server-port 9000 "Custom port works too"
@@ -118,6 +121,7 @@ The Google Cast protocol doesn't support streaming audio directly over the Cast 
 | `--ip` | IP of your Nest Mini or Chromecast | `10.10.100.122` |
 | `--server-ip` | IP the Nest uses to download audio (auto-detected if omitted) | auto-detect |
 | `--server-port` | Port for the built-in HTTP server | `8001` |
+| `--lang` | Language code for speech synthesis (gTTS) | `en` |
 
 **Auto-detect:** If you omit `--server-ip`, the script probes which network interface routes to your Nest and uses that interface's IP. Works if your PC and Nest are on the same network.
 
@@ -171,7 +175,21 @@ The script works with both. Gemini devices add a 1-3 second delay before returni
 No. gTTS uses Google's public TTS API (no auth). Cast is a local network protocol (no cloud).
 
 **Can it speak in other languages?**
-Yes. Edit `gTTS(text, lang="en")` in `nest_speaker.py` — for example `lang="es"` for Spanish.
+Yes — use the `--lang` flag with any [gTTS-supported language code](https://gtts.readthedocs.io/):
+
+```bash
+# Spanish
+python3 nest_speaker.py --lang es "El café de Colombia es reconocido en todo el mundo."
+
+# French
+python3 nest_speaker.py --lang fr "Bonjour, comment allez-vous?"
+
+# German
+python3 nest_speaker.py --lang de "Guten Tag, wie geht es Ihnen?"
+
+# Japanese
+python3 nest_speaker.py --lang ja "こんにちは、お元気ですか？"
+```
 
 **Why not use Google Assistant's built-in TTS?**
 Assistant requires account auth and routes through Google's cloud. This gives you raw, local control — useful for automation, IoT triggers, and notification systems.

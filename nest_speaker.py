@@ -265,11 +265,11 @@ class NestPlayer:
         print("      Channel open.")
         return True
 
-    def play_tts(self, text, server_ip="10.10.0.100", server_port=8001):
+    def play_tts(self, text, server_ip="10.10.0.100", server_port=8001, lang="en"):
         ts = int(time.time())
         fname = f"nest_tts_{ts}.mp3"
         fpath = f"/tmp/{fname}"
-        gTTS(text, lang="en").save(fpath)
+        gTTS(text, lang=lang).save(fpath)
         size = os.path.getsize(fpath)
         print(f"  [5] TTS audio: {fname} ({size}B)")
         url = f"http://{server_ip}:{server_port}/{fname}"
@@ -376,6 +376,7 @@ def main():
     parser.add_argument("--ip", default=NEST_IP, help="Nest/Chromecast IP address")
     parser.add_argument("--server-ip", default="", help="Host IP for file serving (auto-detect if empty)")
     parser.add_argument("--server-port", type=int, default=8001)
+    parser.add_argument("--lang", default="en", help="Language code for gTTS (e.g. 'en', 'es', 'fr')")
     args = parser.parse_args()
 
     if not args.server_ip:
@@ -396,7 +397,7 @@ def main():
         if p.launch_media_receiver():
             p.open_media_channel()
             if args.message:
-                p.play_tts(args.message, args.server_ip, args.server_port)
+                p.play_tts(args.message, args.server_ip, args.server_port, args.lang)
                 time.sleep(10)
                 print("  Done.")
             else:
