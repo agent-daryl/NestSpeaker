@@ -282,28 +282,22 @@ class NestPlayer:
         except OSError:
             pass
 
-    def _respond_to_heartbeats(self):
-        """Background thread: respond to PING/HEARTBEAT so the Cast socket stays alive."""
-        while self.sock and not self._stop_event.is_set():
-            try:
-                self.sock.settimeout(1)
-                msg = read_one_msg(self.sock)
-                if msg is None:
-                    continue
-                parsed = _try_json(msg.payload_utf8)
-                if not parsed:
-                    continue
-                if parsed.get("type") == "PING":
-                    rid = parsed.get("requestId", 0)
-                    ts = parsed.get("timestamp", 0)
-                    ns = msg.namespace
-                    send_raw(self.sock, SENDER_ID, msg.source_id, ns,
-                             json.dumps({"type": "PONG", "requestId": rid, "timestamp": ts}))
-            except:
-                break
+    def _handle_heartbeat(self, sock, msg, parsed):
+        """Inline PING/HEARTBEAT responder. Prevents background thread race."""
+        if not parsed:
+            return
+        t = parsed.get("type", "")
+        ns = msg.namespace
+        if t == "PING":
+            rid = parsed.get("requestId", 0)
+            ts = parsed.get("timestamp", 0)
+            send_raw(sock, SENDER_ID, msg.source_id, ns,
+                     json.dumps({"type": "PONG", "requestId": rid, "timestamp": ts}))
+        elif t == "HEARTBEAT":
+            send_raw(sock, SENDER_ID, msg.source_id, ns,
+                     json.dumps({"type": "HEARTBEAT"}))
 
     def play_media(self, url, content_type="audio/mp3"):
-        import threading
         import time as _time
         dest = self.session_id
         if not dest:
@@ -323,13 +317,21 @@ class NestPlayer:
             "currentTime": 0
         })
 
-        # Wait for MEDIA_STATUS with playerState BUFFERING or PLAYING
-        # (First MEDIA_STATUS will be IDLE — we ignore it)
-        for _ in range(30):
-            parsed = receive(self.sock, timeout=2)
-            if parsed is None:
+        # Wait for MEDIA_STATUS with playerState BUFFERING or PLAYING.
+        # Use explicit heartbeat handling so PING/HEARTBEAT don't eat iterations.
+        for _ in range(60):
+            proto = read_one_msg(self.sock)
+            if proto is None:
                 continue
-            if parsed.get("type") != "MEDIA_STATUS":
+            parsed = _try_json(proto.payload_utf8)
+            if not parsed:
+                continue
+            t = parsed.get("type", "?")
+            # Respond to heartbeats inline
+            if t in ("PING", "HEARTBEAT"):
+                self._handle_heartbeat(self.sock, proto, parsed)
+                continue
+            if t != "MEDIA_STATUS":
                 continue
             status_list = parsed.get("status", [])
             if not status_list:
@@ -339,21 +341,28 @@ class NestPlayer:
             print(f"    MEDIA_STATUS: state={state} idleReason={idle}")
             if state in ("BUFFERING", "PLAYING"):
                 print("      Audio is playing — keep listening!")
-                # Keep connection alive until playback finishes or ~20s timeout
-                deadline = _time.time() + 20
-                heartbeat_th = threading.Thread(target=self._respond_to_heartbeats, daemon=True)
-                heartbeat_th.start()
+                # Estimate audio duration from URL path (gTTS ~50KB/s, default ~1-2 min)
+                # Wait up to 90 seconds for playback to finish
+                deadline = _time.time() + 90
                 while _time.time() < deadline:
-                    p = receive(self.sock, timeout=1)
-                    if p is None:
+                    proto2 = read_one_msg(self.sock)
+                    if proto2 is None:
                         continue
-                    if p.get("type") == "MEDIA_STATUS":
-                        sl = p.get("status", [{}])
-                        s = sl[0].get("playerState", "?")
-                        ir = sl[0].get("idleReason")
-                        if s == "IDLE" and ir == "FINISHED":
-                            print("      Playback finished.")
-                            break
+                    parsed2 = _try_json(proto2.payload_utf8)
+                    if not parsed2:
+                        continue
+                    t2 = parsed2.get("type", "?")
+                    if t2 in ("PING", "HEARTBEAT"):
+                        self._handle_heartbeat(self.sock, proto2, parsed2)
+                        continue
+                    if t2 != "MEDIA_STATUS":
+                        continue
+                    sl = parsed2.get("status", [{}])
+                    s = sl[0].get("playerState", "?")
+                    ir = sl[0].get("idleReason")
+                    if s == "IDLE" and ir == "FINISHED":
+                        print("      Playback finished.")
+                        break
                 print("      (timeout / finished)")
                 return
             elif state == "IDLE" and idle == "ERROR":
