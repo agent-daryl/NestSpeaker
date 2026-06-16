@@ -17,6 +17,7 @@ import time
 from google.protobuf.message import DecodeError
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import logging
+import requests as http_requests
 
 class QuietHTTPHandler(SimpleHTTPRequestHandler):
     def log_error(self, format, *args):
@@ -24,8 +25,6 @@ class QuietHTTPHandler(SimpleHTTPRequestHandler):
         if exc_name in ('ConnectionResetError', 'BrokenPipeError'):
             return
         super().log_error(format, *args)
-from gtts import gTTS
-
 from pychromecast.cast_channel_pb2 import CastMessage
 
 SENDER_ID = "sender-0"
@@ -266,6 +265,7 @@ class NestPlayer:
         return True
 
     def play_tts(self, text, server_ip="10.10.0.100", server_port=8001, lang="en"):
+        from gtts import gTTS
         ts = int(time.time())
         fname = f"nest_tts_{ts}.mp3"
         fpath = f"/tmp/{fname}"
@@ -275,6 +275,35 @@ class NestPlayer:
         url = f"http://{server_ip}:{server_port}/{fname}"
         self.play_media(url)
         # Auto-cleanup MP3 after playback finishes or times out
+        try:
+            if os.path.exists(fpath):
+                os.remove(fpath)
+                print(f"      Cleaned up {fname}")
+        except OSError:
+            pass
+
+    def play_tts_kokoro(self, text, server_ip="10.10.0.100", server_port=8001, kokoro_server="http://10.10.0.20:8880", kokoro_voice="af_heart"):
+        ts = int(time.time())
+        fname = f"nest_tts_{ts}.mp3"
+        fpath = f"/tmp/{fname}"
+        print(f"  [5] Generating audio via Kokoro ({kokoro_server}) ...")
+        resp = http_requests.post(
+            f"{kokoro_server}/v1/audio/speech",
+            json={
+                "model": "tts-1",
+                "input": text,
+                "voice": kokoro_voice,
+                "response_format": "mp3"
+            },
+            timeout=60
+        )
+        resp.raise_for_status()
+        with open(fpath, "wb") as f:
+            f.write(resp.content)
+        size = os.path.getsize(fpath)
+        print(f"  [5] TTS audio: {fname} ({size}B, voice={kokoro_voice})")
+        url = f"http://{server_ip}:{server_port}/{fname}"
+        self.play_media(url)
         try:
             if os.path.exists(fpath):
                 os.remove(fpath)
@@ -386,6 +415,9 @@ def main():
     parser.add_argument("--server-ip", default="", help="Host IP for file serving (auto-detect if empty)")
     parser.add_argument("--server-port", type=int, default=8001)
     parser.add_argument("--lang", default="en", help="Language code for gTTS (e.g. 'en', 'es', 'fr')")
+    parser.add_argument("--tts-engine", choices=["kokoro", "gtts"], default="kokoro", help="TTS engine (default: kokoro)")
+    parser.add_argument("--tts-server", default="http://10.10.0.20:8880", help="Kokoro TTS server URL (default: http://10.10.0.20:8880)")
+    parser.add_argument("--kokoro-voice", default="af_heart", help="Kokoro voice ID (default: af_heart)")
     args = parser.parse_args()
 
     if not args.server_ip:
@@ -406,7 +438,10 @@ def main():
         if p.launch_media_receiver():
             p.open_media_channel()
             if args.message:
-                p.play_tts(args.message, args.server_ip, args.server_port, args.lang)
+                if args.tts_engine == "kokoro":
+                    p.play_tts_kokoro(args.message, args.server_ip, args.server_port, args.tts_server, args.kokoro_voice)
+                else:
+                    p.play_tts(args.message, args.server_ip, args.server_port, args.lang)
                 time.sleep(10)
                 print("  Done.")
             else:
