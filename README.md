@@ -199,3 +199,8 @@ The Cast protocol is officially supported — YouTube and Netflix use it too. No
 
 **What if port 8001 is already in use?**
 Use `--server-port <port>`. Remember to open that port in your firewall if you change it.
+
+
+---
+
+> **Privacy note:** Internal IP addresses originally present in this repository have been replaced with placeholder addresses in the `10.10.0.0/16` range to protect the owner's private network topology. Functionality is unchanged; configure real addresses via environment variables where supported.
